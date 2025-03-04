@@ -1,0 +1,8 @@
+[package]
+name = "prog4"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rerun = { version = "0.22.1", features = ["sdk"], default-features = false }
+chrono = "= 0.4.39"
