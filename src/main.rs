@@ -1,6 +1,5 @@
-
 use rerun::components::GraphNode;
-use rerun::{RecordingStream, RecordingStreamBuilder, GraphNodes, AsComponents, Component, Color};
+use rerun::{RecordingStream, RecordingStreamBuilder, GraphNodes, AsComponents, Component, Color, GraphEdges};
 
 impl Tile {
     fn to_char(&self) -> char {
@@ -16,6 +15,7 @@ impl Tile {
 
 use std::io::{self, BufRead};
 use std::collections::{VecDeque, HashSet};
+use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,25 +51,34 @@ fn find_player(map: &Vec<Vec<Tile>>) -> Option<(usize, usize)> {
     None
 }
 
-/// need to pass the graph ids and graph colors to keep track of the graphs state, and everything that has been visited so far
-/// change update_fields.with stuff to take in the whole list of node ids and also node edges, node colors
-fn collect_gold(rec: &RecordingStream, map: &Vec<Vec<Tile>>, start: (usize, usize)) -> usize {
-    // also somehow use GraphEdges to show the traversal?
-    
+fn collect_gold(
+    rec: &RecordingStream,
+    map: &Vec<Vec<Tile>>,
+    start: (usize, usize),
+    node_ids: &[String],
+    colors: &mut Vec<Color>,
+    edges: &mut Vec<(String, String)>,
+) -> usize {
     let directions = [(0, 1), (1, 0), (0, -1), (-1, 0)];
     let mut queue = VecDeque::new();
     let mut visited = HashSet::new();
     let mut gold_count = 0;
     
-    let start_id = format!("{}_{}",start.1, start.0);
+    let width = map[0].len();
+    let (start_x, start_y) = start;
+    let start_index = start_y * width + start_x;
     
-    std::thread::sleep(Duration::from_secs_f32(0.5));
-    rec.log("board", 
-        &GraphNodes::update_fields().with_node_ids(vec![start_id]).with_colors(vec![Color::from_rgb(255,0,0)])
-    ).unwrap();
-
     queue.push_back(start);
     visited.insert(start);
+    
+    // Update start node color
+    colors[start_index] = Color::from_rgb(255, 0, 0);
+    std::thread::sleep(Duration::from_secs_f32(0.5));
+    rec.log("board", &GraphNodes::update_fields()
+        .with_colors(colors.clone())
+    ).unwrap();
+    rec.log("board", 
+        &GraphEdges::new(edges.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect::<Vec<(&str,&str)>>())).unwrap();
     
     while let Some((x, y)) = queue.pop_front() {
         if map[y][x] == Tile::Gold {
@@ -84,15 +93,27 @@ fn collect_gold(rec: &RecordingStream, map: &Vec<Vec<Tile>>, start: (usize, usiz
                 let ny = ny as usize;
                 
                 if ny < map.len() && nx < map[ny].len() && !visited.contains(&(nx, ny)) {
-                    std::thread::sleep(Duration::from_secs_f32(0.5));
                     match map[ny][nx] {
                         Tile::Floor | Tile::Gold => {
-                            let id = format!("{}_{}",ny, nx);
-                            rec.log("board", 
-                                &GraphNodes::update_fields().with_node_ids(vec![id]).with_colors(vec![Color::from_rgb(255,0,0)])
-                            ).unwrap();
-                            queue.push_back((nx, ny));
                             visited.insert((nx, ny));
+                            queue.push_back((nx, ny));
+                            
+                            // Update neighbor's color
+                            let neighbor_index = ny * width + nx;
+                            colors[neighbor_index] = Color::from_rgb(255, 0, 0);
+                            
+                            // Add edge from current node to neighbor
+                            let current_id = format!("{}_{}", y, x);
+                            let neighbor_id = format!("{}_{}", ny, nx);
+                            edges.push((current_id, neighbor_id));
+                            
+                            // Log the update
+                            std::thread::sleep(Duration::from_secs_f32(0.5));
+                            rec.log("board", &GraphNodes::update_fields()
+                                .with_colors(colors.clone())
+                            ).unwrap();
+                            rec.log("board", 
+                                &GraphEdges::new(edges.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect::<Vec<(&str,&str)>>())).unwrap();
                         }
                         _ => {}
                     }
@@ -129,29 +150,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut positions = vec![];
     // Print the parsed map
     println!("\nParsed Map:");
-    for (i,row) in map.iter().enumerate() {
-        for (j,tile) in row.iter().enumerate() {
+    for (i, row) in map.iter().enumerate() {
+        for (j, tile) in row.iter().enumerate() {
             ids.push(format!("{i}_{j}"));
             labels.push(tile.to_char().to_string());
-            positions.push((j as f32 * 100.,i as f32*100.));
+            positions.push((j as f32 * 100., i as f32 * 100.));
             print!("{:?} ", tile.to_char());
         }
         println!();
     }
     
     let default_color = Color::from_rgb(255, 255, 255);
-    let colors = vec![default_color; ids.len()];
+    let mut colors = vec![default_color; ids.len()];
+    let mut edges = vec![];
     
     rec.log_static(
         "board",
-        &GraphNodes::new(ids)
+        &GraphNodes::new(ids.clone())
             .with_positions(positions)
             .with_labels(labels)
-            .with_colors(colors),
     )?;
     
+    thread::sleep(Duration::from_secs(10));
     if let Some(start) = find_player(&map) {
-        let gold_collected = collect_gold(&rec, &map, start);
+        let gold_collected = collect_gold(&rec, &map, start, &ids, &mut colors, &mut edges);
         println!("Maximum gold collected: {}", gold_collected);
     } else {
         println!("No player found on the map.");
