@@ -74,10 +74,10 @@ fn collect_gold(
     // Update start node color
     colors[start_index] = Color::from_rgb(255, 0, 0);
     std::thread::sleep(Duration::from_secs_f32(0.5));
-    rec.log("board", &GraphNodes::update_fields()
+    rec.log("board_graph", &GraphNodes::update_fields()
         .with_colors(colors.clone())
     ).unwrap();
-    rec.log("board", 
+    rec.log("board_graph", 
         &GraphEdges::new(edges.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect::<Vec<(&str,&str)>>())).unwrap();
     
     while let Some((x, y)) = queue.pop_front() {
@@ -109,10 +109,10 @@ fn collect_gold(
                             
                             // Log the update
                             std::thread::sleep(Duration::from_secs_f32(0.5));
-                            rec.log("board", &GraphNodes::update_fields()
+                            rec.log("board_graph", &GraphNodes::update_fields()
                                 .with_colors(colors.clone())
                             ).unwrap();
-                            rec.log("board", 
+                            rec.log("board_graph", 
                                 &GraphEdges::new(edges.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect::<Vec<(&str,&str)>>())).unwrap();
                         }
                         _ => {}
@@ -164,14 +164,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut colors = vec![default_color; ids.len()];
     let mut edges = vec![];
     
-    rec.log_static(
-        "board",
+    rec.log(
+        "board_graph",
         &GraphNodes::new(ids.clone())
             .with_positions(positions)
             .with_labels(labels)
     )?;
     
-    thread::sleep(Duration::from_secs(10));
     if let Some(start) = find_player(&map) {
         let gold_collected = collect_gold(&rec, &map, start, &ids, &mut colors, &mut edges);
         println!("Maximum gold collected: {}", gold_collected);
